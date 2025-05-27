@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport"
+          content="width=device-width, user-scalable=no, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="ie=edge">
+    <title>Document</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            width: 1200px;
+            height: 900px;
+        }
+
+        .post  {
+            padding: 50px;
+            gap: 30px;
+            display: flex;
+            max-width: 100%;
+            max-height: 100%;
+            background: url("file:///Users/pavelparfenia/Documents/Projects/content-bot/src/assets/post/background.png");
+            flex-direction: column;
+        }
+
+        #top-content {
+            border-radius: 15px;
+            background: linear-gradient(90deg,#00000050 0%,  #00000010 90%, #00000000 100%);
+            width: 100%;
+            align-items: center;
+            padding-left: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-family: sans-serif;
+            font-weight: 500;
+            font-size: 20px;
+            color: white;
+        }
+
+        #logo {
+            width: 77px;
+            height: 93px;
+        }
+
+        #image {
+            width: 100%;
+            height: 616px;
+            object-fit: cover;
+        }
+        #title {
+            border-radius: 15px;
+            padding: 10px;
+            background: #00000050;
+            text-align: center;
+            font-size: 36px;
+            font-family: sans-serif;
+            color: #ddfff4;
+            max-width: 100%;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="post">
+        <div id="top-content">
+            <span>t.me/saibersport</span>
+            <img id="logo" src="file:///Users/pavelparfenia/Documents/Projects/content-bot/src/assets/post/logo.png" />
+        </div>
+
+        <img id="image" src="https://dota2.ru/img/news/t1688796986.webp" alt="lol">
+
+        <span id="title">Lorem ipsum dolor sit amet</span>
+    </div>
+</body>
+</html>

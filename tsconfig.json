@@ -1,0 +1,24 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "commonjs",
+    "lib": ["ES2020", "DOM"],
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "outDir": "./dist",
+    "baseUrl": "./src",
+    "paths": {
+      "src/*": ["/*"],
+      "config": ["config"],
+      "commands/*": ["commands/*"],
+      "handlers/*": ["handlers/*"],
+      "services/*": ["services/*"],
+      "utils/*": ["utils/*"],
+      "middleware/*": ["middleware/*"]
+    }
+  },
+  "include": ["src"]
+}
+
