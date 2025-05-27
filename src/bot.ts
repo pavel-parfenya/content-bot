@@ -2,12 +2,13 @@ import generateCommand from "commands/generate.command";
 import imageCommand from "commands/image.command";
 import { promptCommand } from "commands/prompt.command";
 import startCommand from "commands/start.command";
-import { Bot, session } from "grammy";
 import { TELEGRAM_BOT_TOKEN } from "config";
-import { generatePostJob } from "jobs/generate-post.job";
-import { MyContext, SessionData } from "./types";
+import { Source } from "constants/source";
 import { callbackQueryDataEvent } from "events/callback-query-data.event";
+import { Bot, session } from "grammy";
+import { generatePostJob } from "jobs/generate-post.job";
 import cron from "node-cron";
+import { MyContext, SessionData } from "types";
 
 export const bot = new Bot<MyContext>(TELEGRAM_BOT_TOKEN);
 
@@ -28,4 +29,7 @@ bot.command("image", imageCommand);
 
 bot.callbackQuery("post", callbackQueryDataEvent);
 
-cron.schedule("0 * * * *", () => generatePostJob(bot.api));
+cron.schedule("0 10-23 * * *", () => generatePostJob(bot.api, Source.Dota2Ru));
+cron.schedule("30 10-23 * * *", () =>
+  generatePostJob(bot.api, Source.Dotesports),
+);

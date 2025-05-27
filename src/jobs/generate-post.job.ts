@@ -1,13 +1,14 @@
+import { Source } from "constants/source";
 import { Api, InlineKeyboard, InputFile, RawApi } from "grammy";
 import { ImageService } from "services/image.service";
 import { PostService } from "services/post.service";
 import { ADMIN_ID, CHANNEL_ID } from "constants/telegram-ids";
 import SessionStore from "store/session/session.store";
 
-export const generatePostJob = async (api: Api<RawApi>) => {
+export const generatePostJob = async (api: Api<RawApi>, source: Source) => {
   await api.sendMessage(ADMIN_ID, "Генерирую пост (случайная тема) ...");
   try {
-    const { title, text, imageUrl } = await PostService.generate();
+    const { title, text, imageUrl } = await PostService.generate(source);
     const image = await ImageService.create(title, imageUrl);
 
     SessionStore.set(CHANNEL_ID, {

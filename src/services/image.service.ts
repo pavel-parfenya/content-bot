@@ -12,7 +12,6 @@ export const ImageService = {
       const page = await browser.newPage();
       await page.setViewport({ width: 1200, height: 900 });
 
-      // Загружаем HTML через file://
       await page.goto(`file://${absolutePath}`);
 
       await page.evaluate(

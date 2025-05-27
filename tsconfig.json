@@ -10,7 +10,6 @@
     "outDir": "./dist",
     "baseUrl": "./src",
     "paths": {
-      "src/*": ["/*"],
       "config": ["config"],
       "commands/*": ["commands/*"],
       "handlers/*": ["handlers/*"],
