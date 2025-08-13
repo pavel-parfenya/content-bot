@@ -8,7 +8,10 @@ export const ImageService = {
 
     if (base64ImageUrl) {
       const absolutePath = path.resolve("./src/assets/post/post.html");
-      const browser = await puppeteer.launch({ headless: "shell" });
+      const browser = await puppeteer.launch({
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        headless: "shell",
+      });
       const page = await browser.newPage();
       await page.setViewport({ width: 1200, height: 900 });
 

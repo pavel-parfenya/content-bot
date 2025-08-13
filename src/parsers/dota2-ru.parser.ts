@@ -5,7 +5,10 @@ export const Dota2RuParser = {
   parse: async (): Promise<{ content: string; imageUrl: string }> => {
     console.log("Парсинг dota2.ru");
     try {
-      const browser = await puppeteer.launch({ headless: "shell" });
+      const browser = await puppeteer.launch({
+        args: ["--no-sandbox", "--disable-setuid-sandbox"],
+        headless: "shell",
+      });
       const page = await browser.newPage();
 
       await page.goto("https://dota2.ru/news/");
