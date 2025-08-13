@@ -1,6 +1,4 @@
 import generateCommand from "commands/generate.command";
-import imageCommand from "commands/image.command";
-import { promptCommand } from "commands/prompt.command";
 import startCommand from "commands/start.command";
 import { TELEGRAM_BOT_TOKEN } from "config";
 import { Source } from "constants/source";
@@ -24,8 +22,6 @@ bot.use(
 
 bot.command("start", startCommand);
 bot.command("generate", generateCommand);
-bot.command("prompt", promptCommand);
-bot.command("image", imageCommand);
 
 bot.callbackQuery("post", callbackQueryDataEvent);
 

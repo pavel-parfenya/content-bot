@@ -7,10 +7,11 @@
     "esModuleInterop": true,
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
-    "outDir": "./dist",
-    "baseUrl": "./src",
+    "outDir": "dist",
+    "baseUrl": "src",
     "paths": {
       "config": ["config"],
+      "bot": ["bot"],
       "commands/*": ["commands/*"],
       "handlers/*": ["handlers/*"],
       "services/*": ["services/*"],
