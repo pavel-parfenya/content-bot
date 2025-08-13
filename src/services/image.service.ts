@@ -7,7 +7,7 @@ export const ImageService = {
     const base64ImageUrl = await fetchImageBase64(imageUrl);
 
     if (base64ImageUrl) {
-      const absolutePath = path.resolve("./src/assets/post/post.html");
+      const absolutePath = path.join(process.cwd(), "dist", "post.html");
       const browser = await puppeteer.launch({
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
         headless: "shell",
@@ -15,7 +15,7 @@ export const ImageService = {
       const page = await browser.newPage();
       await page.setViewport({ width: 1200, height: 900 });
 
-      await page.goto(`file://${absolutePath}`);
+      await page.goto(`file://${absolutePath}`, { waitUntil: "networkidle0" });
 
       await page.evaluate(
         (title, imageSrc) => {
