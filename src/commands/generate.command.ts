@@ -1,9 +1,11 @@
+import { env } from "config";
 import { ImageService } from "services/image.service";
 import { PostService } from "services/post.service";
-import { CHANNEL_ID } from "constants/telegram-ids";
 import SessionStore from "store/session/session.store";
 import { MyContext } from "types";
 import { sendPostWithButtons } from "utils/sendPostWithButtons";
+
+const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 
 export default async function generateCommand(ctx: MyContext) {
   await ctx.reply("Генерирую пост (случайная тема) ...");

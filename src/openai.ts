@@ -1,9 +1,8 @@
 import axios from "axios";
-import { DEEPSEEK_API_KEY } from "config";
+import { env } from "config";
 
 type Message = { role: "user" | "assistant" | "system"; content: string };
 
-// В памяти: ключ — chatId (или userId), значение — массив сообщений
 const deepSeekSessions: Record<string, Message[]> = {};
 
 export async function generatePostWithSession(
@@ -14,7 +13,6 @@ export async function generatePostWithSession(
     deepSeekSessions[chatId] = [];
   }
 
-  // Добавляем пользовательский запрос
   deepSeekSessions[chatId].push({ role: "user", content: prompt });
 
   const response = await axios.post(
@@ -25,7 +23,7 @@ export async function generatePostWithSession(
     },
     {
       headers: {
-        Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+        Authorization: `Bearer ${env.DEEPSEEK_API_KEY}`,
         "Content-Type": "application/json",
       },
     },
@@ -34,7 +32,6 @@ export async function generatePostWithSession(
   const assistantMessage = response.data.choices?.[0]?.message;
 
   if (assistantMessage) {
-    // Добавляем ответ модели в сессию
     deepSeekSessions[chatId].push(assistantMessage);
     return assistantMessage.content.trim();
   }

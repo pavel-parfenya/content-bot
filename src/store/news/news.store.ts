@@ -21,7 +21,7 @@ export const NewsStore = {
     if (!data.includes(title)) {
       data.push(title);
       writeFileSync(filePath, JSON.stringify(data, null, 2), "utf-8");
-      console.log("Заголовок добавлен.");
+      console.log("Заголовок добавлен: ", title);
     } else {
       console.log("Заголовок уже существует.");
     }

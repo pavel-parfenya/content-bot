@@ -1,7 +1,9 @@
+import { env } from "config";
 import { InlineKeyboard, InputFile } from "grammy";
-import { CHANNEL_ID } from "constants/telegram-ids";
 import SessionStore from "store/session/session.store";
 import { MyContext } from "types";
+
+const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 
 export async function sendPostWithButtons(ctx: MyContext) {
   const session = SessionStore.get(CHANNEL_ID);

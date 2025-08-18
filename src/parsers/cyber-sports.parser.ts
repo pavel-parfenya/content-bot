@@ -1,9 +1,10 @@
 import puppeteer from "puppeteer";
 import { NewsStore } from "store/news/news.store";
+import { delay } from "utils/delay";
 
-export class Dota2RuParser {
+export class CyberSportsParser {
   async parse(): Promise<{ content: string; imageUrl: string }> {
-    console.log("Парсинг dota2.ru");
+    console.log("Парсинг cyber.sports.ru");
     try {
       const browser = await puppeteer.launch({
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
@@ -11,12 +12,14 @@ export class Dota2RuParser {
       });
       const page = await browser.newPage();
 
-      await page.goto("https://dota2.ru/news/");
-      const newsElements = await page.$$(".index__news-item");
-      const news = await page.$$eval(
-        ".index__news-item .index__news-name",
-        (els) => els.map((el) => el.innerHTML.trim()),
+      await page.goto("https://cyber.sports.ru/dota2/");
+      const newsElements = await page.$$(
+        "main.columns-layout__main article h2 a",
       );
+      const news = await page.$$eval(".material-list__title a", (els) =>
+        els.map((el) => el.innerHTML.trim()),
+      );
+
       const existedNews = NewsStore.getAll();
 
       const title = news.find((newsItem) => !existedNews.includes(newsItem));
@@ -24,13 +27,12 @@ export class Dota2RuParser {
         NewsStore.add(title);
         const titleIndex = news.indexOf(title);
         const currentElement = newsElements[titleIndex];
-        const img = await currentElement.$(".index__news-img");
+        const img = await currentElement.$(".material-list__item-img");
         const imageUrl = await img?.evaluate((el) => el.getAttribute("src"));
         await currentElement.click();
-        await page.waitForSelector("main.global-main.container.news-news");
-        const content = await page.$eval(
-          "section.global-main__wrap.news-news__main",
-          (el) => el.innerHTML.trim(),
+        await delay(5000);
+        const content = await page.$eval(".post-content", (el) =>
+          el.innerHTML.trim(),
         );
 
         await browser.close();
@@ -44,4 +46,4 @@ export class Dota2RuParser {
   }
 }
 
-export const dota2RuParser = new Dota2RuParser();
+export const cyberSportsParser = new CyberSportsParser();

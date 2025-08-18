@@ -1,9 +1,11 @@
-import { CHANNEL_ID } from "constants/telegram-ids";
+import { env } from "config";
 import { InputFile } from "grammy";
 import SessionStore from "store/session/session.store";
 import { Readable } from "stream";
 import { MyContext } from "types";
 import { markdownToHtml } from "utils/markdownToHtml";
+
+const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 
 export const callbackQueryDataEvent = async (ctx: MyContext) => {
   const session = SessionStore.get(CHANNEL_ID);
