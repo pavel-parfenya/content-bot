@@ -8,6 +8,7 @@ import { Bot, session } from "grammy";
 import { generatePostJob } from "jobs/generate-post.job";
 import cron from "node-cron";
 import { MyContext, SessionData } from "types";
+import { getRandomEnumValue } from "utils/getRandomEnumValue";
 
 export const bot = new Bot<MyContext>(env.TELEGRAM_BOT_TOKEN);
 
@@ -28,10 +29,8 @@ bot.callbackQuery("post", postEvent);
 bot.callbackQuery(/^source:/, sourceEvent);
 
 if (env.NODE_ENV === "prod") {
-  cron.schedule("0 08-21 * * *", () =>
-    generatePostJob(bot.api, Source.Dota2Ru),
-  );
-  cron.schedule("30 08-21 * * *", () =>
-    generatePostJob(bot.api, Source.CyberSportParser),
-  );
+  cron.schedule("*/30 08-21 * * *", () => {
+    const source = getRandomEnumValue(Source);
+    void generatePostJob(bot.api, source);
+  });
 }
