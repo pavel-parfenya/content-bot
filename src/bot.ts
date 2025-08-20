@@ -2,7 +2,8 @@ import generateCommand from "commands/generate.command";
 import startCommand from "commands/start.command";
 import { env } from "config";
 import { Source } from "constants/source";
-import { callbackQueryDataEvent } from "events/callback-query-data.event";
+import { postEvent } from "events/post.event";
+import { sourceEvent } from "events/source.event";
 import { Bot, session } from "grammy";
 import { generatePostJob } from "jobs/generate-post.job";
 import cron from "node-cron";
@@ -23,7 +24,8 @@ bot.use(
 bot.command("start", startCommand);
 bot.command("generate", generateCommand);
 
-bot.callbackQuery("post", callbackQueryDataEvent);
+bot.callbackQuery("post", postEvent);
+bot.callbackQuery(/^source:/, sourceEvent);
 
 if (env.NODE_ENV === "prod") {
   cron.schedule("0 08-21 * * *", () =>

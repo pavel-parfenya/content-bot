@@ -28,7 +28,9 @@ export const generatePostJob = async (api: Api<RawApi>, source: Source) => {
       });
     }
   } catch (error) {
-    console.error(error);
-    await api.sendMessage(ADMIN_ID, "Произошла ошибка при генерации поста 😥");
+    await api.sendMessage(
+      ADMIN_ID,
+      `Произошла ошибка при генерации поста 😥 ${error}`,
+    );
   }
 };

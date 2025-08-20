@@ -1,28 +1,15 @@
-import { env } from "config";
-import { ImageService } from "services/image.service";
-import { PostService } from "services/post.service";
-import SessionStore from "store/session/session.store";
+import { Source } from "constants/source";
+import { InlineKeyboard } from "grammy";
 import { MyContext } from "types";
-import { sendPostWithButtons } from "utils/sendPostWithButtons";
-
-const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 
 export default async function generateCommand(ctx: MyContext) {
-  await ctx.reply("Генерирую пост (случайная тема) ...");
-  try {
-    const { title, text, imageUrl } = await PostService.generate();
+  const keyboard = new InlineKeyboard();
 
-    if (imageUrl && text && title) {
-      const image = await ImageService.create(title, imageUrl);
-      SessionStore.set(CHANNEL_ID, {
-        generatedPost: text,
-        generatedImage: image,
-      });
+  Object.values(Source).forEach((source) => {
+    keyboard.text(source, `source:${source}`).row();
+  });
 
-      await sendPostWithButtons(ctx);
-    }
-  } catch (error) {
-    console.error(error);
-    await ctx.reply("Произошла ошибка при генерации поста 😥");
-  }
+  await ctx.reply("Выберите источник:", {
+    reply_markup: keyboard,
+  });
 }

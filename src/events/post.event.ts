@@ -7,7 +7,7 @@ import { markdownToHtml } from "utils/markdownToHtml";
 
 const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 
-export const callbackQueryDataEvent = async (ctx: MyContext) => {
+export const postEvent = async (ctx: MyContext) => {
   const session = SessionStore.get(CHANNEL_ID);
   const image = session?.generatedImage;
   const text = session?.generatedPost;
@@ -28,9 +28,6 @@ export const callbackQueryDataEvent = async (ctx: MyContext) => {
     SessionStore.clear(CHANNEL_ID);
     await ctx.reply("✅ Пост успешно опубликован!");
   } catch (error) {
-    console.error("Ошибка при отправке поста:", error);
-    await ctx.reply("❌ Не удалось опубликовать пост.");
+    await ctx.reply(`❌ Не удалось опубликовать пост. ${error}`);
   }
-
-  await ctx.answerCallbackQuery();
 };
