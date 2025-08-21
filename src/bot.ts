@@ -29,7 +29,7 @@ bot.callbackQuery("post", postEvent);
 bot.callbackQuery(/^source:/, sourceEvent);
 
 if (env.NODE_ENV === "prod") {
-  cron.schedule("*/30 08-21 * * *", () => {
+  cron.schedule(`*/${env.POST_FREQ_MINUTES} 08-21 * * *`, () => {
     const source = getRandomEnumValue(Source);
     void generatePostJob(bot.api, source);
   });

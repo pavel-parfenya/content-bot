@@ -9,8 +9,8 @@ type Env = {
   TELEGRAM_CHANEL_ID: string;
   TELEGRAM_ADMIN_ID: string;
   DEEPSEEK_API_KEY: string;
-  POST_CRON: string;
   NODE_ENV: NodeEnv;
+  POST_FREQ_MINUTES: number;
 };
 
 export const env: Env = {
@@ -18,6 +18,6 @@ export const env: Env = {
   TELEGRAM_CHANEL_ID: process.env.CHANEL_ID!,
   TELEGRAM_ADMIN_ID: process.env.ADMIN_ID!,
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY!,
-  POST_CRON: process.env.POST_CRON || "0 10-23 * * *",
   NODE_ENV: (process.env.NODE_ENV as NodeEnv) || "dev",
+  POST_FREQ_MINUTES: Number(process.env.POST_FREQ_MINUTES!),
 };

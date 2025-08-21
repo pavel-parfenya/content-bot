@@ -11,6 +11,7 @@ export const postEvent = async (ctx: MyContext) => {
   const session = SessionStore.get(CHANNEL_ID);
   const image = session?.generatedImage;
   const text = session?.generatedPost;
+  console.log(image, text);
   try {
     if (image && text) {
       const imageStream = Readable.from(image);
