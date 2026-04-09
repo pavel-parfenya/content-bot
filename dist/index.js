@@ -126,6 +126,16 @@ async function fetchImageBase64(url) {
   const mime = response.headers["content-type"];
   return `data:${mime};base64,${base64}`;
 }
+const puppeteerLaunchOptions = {
+  headless: "shell",
+  args: [
+    "--no-sandbox",
+    "--disable-setuid-sandbox",
+    "--disable-dev-shm-usage",
+    "--disable-gpu",
+    "--disable-software-rasterizer"
+  ]
+};
 const TEMPLATE_HTML = {
   [PostTemplate.Classic]: "post.html",
   [PostTemplate.Alt]: "post-alt.html"
@@ -136,30 +146,30 @@ const ImageService = {
     if (base64ImageUrl) {
       const fileName = TEMPLATE_HTML[template];
       const absolutePath = path.join(process.cwd(), "dist", fileName);
-      const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: "shell"
-      });
-      const page = await browser.newPage();
-      await page.setViewport({
-        width: 1280,
-        height: 1280,
-        deviceScaleFactor: 1
-      });
-      await page.goto(`file://${absolutePath}`, { waitUntil: "networkidle0" });
-      await page.evaluate(
-        (title2, imageSrc) => {
-          const heading = document.getElementById("title");
-          if (heading) heading.textContent = title2;
-          const image = document.getElementById("image");
-          if (image) image.setAttribute("src", imageSrc);
-        },
-        title,
-        base64ImageUrl
-      );
-      const buffer = await page.screenshot({ type: "png" });
-      await browser.close();
-      return Buffer.from(buffer);
+      const browser = await puppeteer.launch(puppeteerLaunchOptions);
+      try {
+        const page = await browser.newPage();
+        await page.setViewport({
+          width: 1280,
+          height: 1280,
+          deviceScaleFactor: 1
+        });
+        await page.goto(`file://${absolutePath}`, { waitUntil: "networkidle0" });
+        await page.evaluate(
+          (title2, imageSrc) => {
+            const heading = document.getElementById("title");
+            if (heading) heading.textContent = title2;
+            const image = document.getElementById("image");
+            if (image) image.setAttribute("src", imageSrc);
+          },
+          title,
+          base64ImageUrl
+        );
+        const buffer = await page.screenshot({ type: "png" });
+        return Buffer.from(buffer);
+      } finally {
+        await browser.close();
+      }
     }
     return null;
   }
@@ -574,10 +584,7 @@ class Parser {
   }
   async getTopicUrl() {
     console.log(`Парсинг ${this.url}`);
-    const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      headless: "shell"
-    });
+    const browser = await puppeteer.launch(puppeteerLaunchOptions);
     try {
       const page = await browser.newPage();
       await page.goto(`${this.url}${this.urlSuffix}`);
@@ -621,21 +628,24 @@ class Parser {
     if (!this.topicLink) {
       return { content: "", imageUrl: "" };
     }
-    const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      headless: "shell"
-    });
-    const page = await browser.newPage();
-    await page.goto(
-      this.adjustUrl ? `${this.url}${this.topicLink}` : `${this.topicLink}`
-    );
-    await delay(1e3);
-    const content = await page.$eval(
-      this.contentSelector,
-      (el) => el.innerHTML.trim()
-    );
-    await browser.close();
-    return { content, imageUrl: this.imageUrl || "" };
+    const browser = await puppeteer.launch(puppeteerLaunchOptions);
+    try {
+      const page = await browser.newPage();
+      await page.goto(
+        this.adjustUrl ? `${this.url}${this.topicLink}` : `${this.topicLink}`
+      );
+      await delay(1e3);
+      const content = await page.$eval(
+        this.contentSelector,
+        (el) => el.innerHTML.trim()
+      );
+      return { content, imageUrl: this.imageUrl || "" };
+    } catch (error) {
+      console.error("Parser parse() error", error);
+      return { content: "", imageUrl: this.imageUrl || "" };
+    } finally {
+      await browser.close();
+    }
   }
 }
 const cyberSportsParser = new Parser(
@@ -656,11 +666,8 @@ const cyberSportParser = new Parser(
 class Dota2RuParser {
   async parse() {
     console.log("Парсинг dota2.ru");
+    const browser = await puppeteer.launch(puppeteerLaunchOptions);
     try {
-      const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: "shell"
-      });
       const page = await browser.newPage();
       await page.goto("https://dota2.ru/news/");
       const newsElements = await page.$$(".index__news-item");
@@ -670,11 +677,9 @@ class Dota2RuParser {
       );
       const pick = await pickFirstNonDuplicateTitle(news);
       if (pick.kind === "empty") {
-        await browser.close();
         return { content: "", imageUrl: "" };
       }
       if (pick.kind === "no_unique") {
-        await browser.close();
         return { content: "", imageUrl: "", newsNotFound: true };
       }
       const title = pick.title;
@@ -690,11 +695,12 @@ class Dota2RuParser {
           "section.global-main__wrap.news-news__main",
           (el) => el.innerHTML.trim()
         );
-        await browser.close();
         return { content, imageUrl: imageUrl || "" };
       }
     } catch (error) {
       console.error("Parser error", error);
+    } finally {
+      await browser.close();
     }
     return { content: "", imageUrl: "" };
   }

@@ -2,6 +2,7 @@ import { PostTemplate } from "constants/post-template";
 import path from "path";
 import puppeteer from "puppeteer";
 import { fetchImageBase64 } from "utils/fetchBase64Image";
+import { puppeteerLaunchOptions } from "utils/puppeteerLaunch";
 
 type HtmlPostTemplate = PostTemplate.Classic | PostTemplate.Alt;
 
@@ -21,36 +22,35 @@ export const ImageService = {
     if (base64ImageUrl) {
       const fileName = TEMPLATE_HTML[template];
       const absolutePath = path.join(process.cwd(), "dist", fileName);
-      const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: "shell",
-      });
-      const page = await browser.newPage();
-      await page.setViewport({
-        width: 1280,
-        height: 1280,
-        deviceScaleFactor: 1,
-      });
+      const browser = await puppeteer.launch(puppeteerLaunchOptions);
+      try {
+        const page = await browser.newPage();
+        await page.setViewport({
+          width: 1280,
+          height: 1280,
+          deviceScaleFactor: 1,
+        });
 
-      await page.goto(`file://${absolutePath}`, { waitUntil: "networkidle0" });
+        await page.goto(`file://${absolutePath}`, { waitUntil: "networkidle0" });
 
-      await page.evaluate(
-        (title, imageSrc) => {
-          const heading = document.getElementById("title");
-          if (heading) heading.textContent = title;
+        await page.evaluate(
+          (title, imageSrc) => {
+            const heading = document.getElementById("title");
+            if (heading) heading.textContent = title;
 
-          const image = document.getElementById("image");
-          if (image) image.setAttribute("src", imageSrc);
-        },
-        title,
-        base64ImageUrl,
-      );
+            const image = document.getElementById("image");
+            if (image) image.setAttribute("src", imageSrc);
+          },
+          title,
+          base64ImageUrl,
+        );
 
-      const buffer = await page.screenshot({ type: "png" });
+        const buffer = await page.screenshot({ type: "png" });
 
-      await browser.close();
-
-      return Buffer.from(buffer);
+        return Buffer.from(buffer);
+      } finally {
+        await browser.close();
+      }
     }
 
     return null;

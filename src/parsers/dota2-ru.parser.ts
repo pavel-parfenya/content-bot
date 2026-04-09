@@ -1,6 +1,7 @@
 import puppeteer from "puppeteer";
 import { pickFirstNonDuplicateTitle } from "services/semantic-news.service";
 import { NewsStore } from "db/news";
+import { puppeteerLaunchOptions } from "utils/puppeteerLaunch";
 
 export class Dota2RuParser {
   async parse(): Promise<{
@@ -9,11 +10,8 @@ export class Dota2RuParser {
     newsNotFound?: boolean;
   }> {
     console.log("Парсинг dota2.ru");
+    const browser = await puppeteer.launch(puppeteerLaunchOptions);
     try {
-      const browser = await puppeteer.launch({
-        args: ["--no-sandbox", "--disable-setuid-sandbox"],
-        headless: "shell",
-      });
       const page = await browser.newPage();
 
       await page.goto("https://dota2.ru/news/");
@@ -24,11 +22,9 @@ export class Dota2RuParser {
       );
       const pick = await pickFirstNonDuplicateTitle(news);
       if (pick.kind === "empty") {
-        await browser.close();
         return { content: "", imageUrl: "" };
       }
       if (pick.kind === "no_unique") {
-        await browser.close();
         return { content: "", imageUrl: "", newsNotFound: true };
       }
       const title = pick.title;
@@ -45,11 +41,12 @@ export class Dota2RuParser {
           (el) => el.innerHTML.trim(),
         );
 
-        await browser.close();
         return { content, imageUrl: imageUrl || "" };
       }
     } catch (error) {
       console.error("Parser error", error);
+    } finally {
+      await browser.close();
     }
 
     return { content: "", imageUrl: "" };

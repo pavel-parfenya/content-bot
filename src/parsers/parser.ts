@@ -2,6 +2,7 @@ import puppeteer from "puppeteer";
 import { pickFirstNonDuplicateTitle } from "services/semantic-news.service";
 import { NewsStore } from "db/news";
 import { delay } from "utils/delay";
+import { puppeteerLaunchOptions } from "utils/puppeteerLaunch";
 
 export class Parser {
   constructor(
@@ -20,10 +21,7 @@ export class Parser {
   async getTopicUrl() {
     console.log(`Парсинг ${this.url}`);
 
-    const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      headless: "shell",
-    });
+    const browser = await puppeteer.launch(puppeteerLaunchOptions);
 
     try {
       const page = await browser.newPage();
@@ -77,19 +75,22 @@ export class Parser {
       return { content: "", imageUrl: "" };
     }
 
-    const browser = await puppeteer.launch({
-      args: ["--no-sandbox", "--disable-setuid-sandbox"],
-      headless: "shell",
-    });
-    const page = await browser.newPage();
-    await page.goto(
-      this.adjustUrl ? `${this.url}${this.topicLink}` : `${this.topicLink}`,
-    );
-    await delay(1000);
-    const content = await page.$eval(this.contentSelector, (el) =>
-      el.innerHTML.trim(),
-    );
-    await browser.close();
-    return { content, imageUrl: this.imageUrl || "" };
+    const browser = await puppeteer.launch(puppeteerLaunchOptions);
+    try {
+      const page = await browser.newPage();
+      await page.goto(
+        this.adjustUrl ? `${this.url}${this.topicLink}` : `${this.topicLink}`,
+      );
+      await delay(1000);
+      const content = await page.$eval(this.contentSelector, (el) =>
+        el.innerHTML.trim(),
+      );
+      return { content, imageUrl: this.imageUrl || "" };
+    } catch (error) {
+      console.error("Parser parse() error", error);
+      return { content: "", imageUrl: this.imageUrl || "" };
+    } finally {
+      await browser.close();
+    }
   }
 }
