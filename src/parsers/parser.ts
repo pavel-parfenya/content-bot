@@ -1,5 +1,6 @@
 import puppeteer from "puppeteer";
-import { NewsStore } from "store/news/news.store";
+import { pickFirstNonDuplicateTitle } from "services/semantic-news.service";
+import { NewsStore } from "db/news";
 import { delay } from "utils/delay";
 
 export class Parser {
@@ -14,6 +15,7 @@ export class Parser {
 
   private topicLink?: string | null;
   private imageUrl?: string | null;
+  private newsNotFound?: boolean;
 
   async getTopicUrl() {
     console.log(`Парсинг ${this.url}`);
@@ -31,11 +33,19 @@ export class Parser {
       const news = await page.$$eval(this.titleSelector, (els) =>
         els.map((el) => el.innerHTML.trim()),
       );
-      const existedNews = NewsStore.getAll();
-      const title = news.find((newsItem) => !existedNews.includes(newsItem));
+      this.newsNotFound = undefined;
+      const pick = await pickFirstNonDuplicateTitle(news);
+      if (pick.kind === "empty") {
+        return;
+      }
+      if (pick.kind === "no_unique") {
+        this.newsNotFound = true;
+        return;
+      }
+      const title = pick.title;
 
       if (title) {
-        NewsStore.add(title);
+        await NewsStore.add(title);
         const titleIndex = news.indexOf(title);
         const currentElement = newsElements[titleIndex];
 
@@ -53,8 +63,19 @@ export class Parser {
     }
   }
 
-  async parse(): Promise<{ content: string; imageUrl: string }> {
+  async parse(): Promise<{
+    content: string;
+    imageUrl: string;
+    newsNotFound?: boolean;
+  }> {
     await this.getTopicUrl();
+
+    if (this.newsNotFound) {
+      return { content: "", imageUrl: "", newsNotFound: true };
+    }
+    if (!this.topicLink) {
+      return { content: "", imageUrl: "" };
+    }
 
     const browser = await puppeteer.launch({
       args: ["--no-sandbox", "--disable-setuid-sandbox"],

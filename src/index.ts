@@ -1,11 +1,11 @@
 import "dotenv/config";
-import dotenv from "dotenv";
 import { bot } from "bot";
-dotenv.config();
+import { initDatabase } from "db/init";
 
 (async () => {
   try {
     console.log("🚀 Запускаю бота...");
+    await initDatabase();
     await bot.start();
     console.log("✅ Бот успешно запущен!");
   } catch (err) {

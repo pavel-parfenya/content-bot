@@ -1,0 +1,34 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: contentbot
+      POSTGRES_PASSWORD: contentbot
+      POSTGRES_DB: contentbot
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U contentbot -d contentbot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://contentbot:contentbot@db:5432/contentbot
+      NODE_ENV: prod
+      BOT_TOKEN: ${BOT_TOKEN}
+      CHANEL_ID: ${CHANEL_ID}
+      ADMIN_ID: ${ADMIN_ID}
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
+      POST_FREQ_MINUTES: ${POST_FREQ_MINUTES:-0}
+
+volumes:
+  pgdata:

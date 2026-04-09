@@ -1,19 +1,36 @@
+import { PostTemplate } from "constants/post-template";
 import path from "path";
 import puppeteer from "puppeteer";
 import { fetchImageBase64 } from "utils/fetchBase64Image";
 
+type HtmlPostTemplate = PostTemplate.Classic | PostTemplate.Alt;
+
+const TEMPLATE_HTML: Record<HtmlPostTemplate, string> = {
+  [PostTemplate.Classic]: "post.html",
+  [PostTemplate.Alt]: "post-alt.html",
+};
+
 export const ImageService = {
-  create: async (title: string, imageUrl: string): Promise<Buffer | null> => {
+  create: async (
+    title: string,
+    imageUrl: string,
+    template: HtmlPostTemplate = PostTemplate.Classic,
+  ): Promise<Buffer | null> => {
     const base64ImageUrl = await fetchImageBase64(imageUrl);
 
     if (base64ImageUrl) {
-      const absolutePath = path.join(process.cwd(), "dist", "post.html");
+      const fileName = TEMPLATE_HTML[template];
+      const absolutePath = path.join(process.cwd(), "dist", fileName);
       const browser = await puppeteer.launch({
         args: ["--no-sandbox", "--disable-setuid-sandbox"],
         headless: "shell",
       });
       const page = await browser.newPage();
-      await page.setViewport({ width: 1200, height: 900 });
+      await page.setViewport({
+        width: 1280,
+        height: 1280,
+        deviceScaleFactor: 1,
+      });
 
       await page.goto(`file://${absolutePath}`, { waitUntil: "networkidle0" });
 

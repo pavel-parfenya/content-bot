@@ -12,6 +12,7 @@
     "paths": {
       "config": ["config"],
       "bot": ["bot"],
+      "db/*": ["db/*"],
       "commands/*": ["commands/*"],
       "handlers/*": ["handlers/*"],
       "services/*": ["services/*"],

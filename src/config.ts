@@ -1,6 +1,8 @@
-import * as dotenv from "dotenv";
-import * as process from "node:process";
-dotenv.config();
+import dotenv from "dotenv";
+
+dotenv.config({
+  path: process.env.NODE_ENV ? `.env.${process.env.NODE_ENV}` : ".env",
+});
 
 type NodeEnv = "dev" | "prod";
 
@@ -11,6 +13,7 @@ type Env = {
   DEEPSEEK_API_KEY: string;
   NODE_ENV: NodeEnv;
   POST_FREQ_MINUTES: string;
+  DATABASE_URL: string;
 };
 
 export const env: Env = {
@@ -20,4 +23,5 @@ export const env: Env = {
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY!,
   NODE_ENV: (process.env.NODE_ENV as NodeEnv) || "dev",
   POST_FREQ_MINUTES: process.env.POST_FREQ_MINUTES!,
+  DATABASE_URL: process.env.DATABASE_URL!,
 };

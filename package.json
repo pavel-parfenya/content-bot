@@ -4,8 +4,9 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "build": "tsc && tsc-alias && cp src/assets/post/post.html dist/post.html && cp -r src/assets dist/assets ",
-    "start": "NODE_ENV=prod node -r tsconfig-paths/register dist/index.js",
+    "build": "vite build && cp src/assets/post/post.html dist/post.html && cp src/assets/post/post-alt.html dist/post-alt.html && cp -r src/assets dist/assets",
+    "start": "NODE_ENV=prod node dist/index.js",
+    "typecheck": "tsc --noEmit",
     "dev": "NODE_ENV=dev nodemon --ignore '*.json' --watch src --exec ts-node -r tsconfig-paths/register src/index.ts",
     "lint": "eslint './src/**/*.{ts,js}'",
     "lint:fix": "eslint './src/**/*.{ts,js}' --fix",
@@ -26,6 +27,7 @@
     "node-cron": "^4.0.7",
     "node-fetch": "^3.3.2",
     "openai": "^4.100.0",
+    "pg": "^8.20.0",
     "puppeteer": "^24.9.0",
     "rss-parser": "^3.13.0",
     "sharp": "^0.34.2",
@@ -35,6 +37,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.15.18",
+    "@types/pg": "^8.20.0",
     "@typescript-eslint/eslint-plugin": "^8.32.1",
     "@typescript-eslint/parser": "^8.32.1",
     "eslint": "^9.27.0",
@@ -44,7 +47,7 @@
     "prettier": "^3.5.3",
     "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
-    "tsc-alias": "^1.8.16",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vite": "^5.4.11"
   }
 }
