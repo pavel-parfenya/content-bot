@@ -7,7 +7,7 @@ const src = resolve(__dirname, "src");
 
 /** Файлы из `src/` и алиасы из tsconfig — в бандл; npm — через require() без лишнего CJS interop. */
 const INTERNAL_ALIAS =
-  /^(config|bot|types|db\/|commands\/|handlers\/|services\/|utils\/|middleware\/|constants\/|events\/|jobs\/|parsers\/|store\/)/;
+  /^(config|bot|types|db\/|commands\/|handlers\/|services\/|utils\/|middleware\/|constants\/|events\/|jobs\/|parsers\/|store\/|server\/)/;
 
 function isBundledProjectModule(id: string): boolean {
   if (id.startsWith("\0")) {
@@ -41,6 +41,7 @@ export default defineConfig({
       { find: /^jobs\/(.*)$/, replacement: resolve(src, "jobs/$1") },
       { find: /^parsers\/(.*)$/, replacement: resolve(src, "parsers/$1") },
       { find: /^store\/(.*)$/, replacement: resolve(src, "store/$1") },
+      { find: /^server\/(.*)$/, replacement: resolve(src, "server/$1") },
     ],
   },
   build: {

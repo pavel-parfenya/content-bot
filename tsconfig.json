@@ -17,7 +17,8 @@
       "handlers/*": ["handlers/*"],
       "services/*": ["services/*"],
       "utils/*": ["utils/*"],
-      "middleware/*": ["middleware/*"]
+      "middleware/*": ["middleware/*"],
+      "server/*": ["server/*"]
     }
   },
   "include": ["src"]

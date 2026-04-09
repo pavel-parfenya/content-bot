@@ -11,6 +11,7 @@ const crypto = require("crypto");
 const pg = require("pg");
 const cheerio = require("cheerio");
 const cron = require("node-cron");
+const http$1 = require("http");
 function _interopNamespaceDefault(e) {
   const n = Object.create(null, { [Symbol.toStringTag]: { value: "Module" } });
   if (e) {
@@ -61,6 +62,35 @@ function requireDatabaseUrl() {
   }
   return raw;
 }
+function parseMode() {
+  const m = process.env.MODE?.trim().toLowerCase();
+  if (m === "webhook") {
+    return "webhook";
+  }
+  return "polling";
+}
+function requireWebhookUrl() {
+  const raw = process.env.WEBHOOK_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      "MODE=webhook требует WEBHOOK_URL — полный HTTPS URL, например https://your-app.onrender.com/telegram"
+    );
+  }
+  let u;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new Error(`WEBHOOK_URL некорректный: ${raw}`);
+  }
+  const isProd = process.env.NODE_ENV === "prod";
+  if (isProd && u.protocol !== "https:") {
+    throw new Error(
+      "В production WEBHOOK_URL должен начинаться с https:// (Telegram требует HTTPS для webhook)."
+    );
+  }
+  return raw;
+}
+const mode = parseMode();
 const env = {
   TELEGRAM_BOT_TOKEN: process.env.BOT_TOKEN,
   TELEGRAM_CHANEL_ID: process.env.CHANEL_ID,
@@ -69,7 +99,10 @@ const env = {
   NODE_ENV: process.env.NODE_ENV || "dev",
   POST_FREQ_MINUTES: process.env.POST_FREQ_MINUTES,
   DATABASE_URL: requireDatabaseUrl(),
-  DATABASE_SCHEMA: (process.env.DATABASE_SCHEMA ?? "content_bot").trim() || "content_bot"
+  DATABASE_SCHEMA: (process.env.DATABASE_SCHEMA ?? "content_bot").trim() || "content_bot",
+  MODE: mode,
+  WEBHOOK_URL: mode === "webhook" ? requireWebhookUrl() : void 0,
+  WEBHOOK_SECRET: process.env.WEBHOOK_SECRET?.trim() || void 0
 };
 var PostTemplate = /* @__PURE__ */ ((PostTemplate2) => {
   PostTemplate2["Classic"] = "Classic";
@@ -881,11 +914,118 @@ async function initDatabase() {
     );
   `);
 }
+function requestPath$1(url) {
+  const path2 = (url ?? "/").split("?")[0];
+  return path2 === "" ? "/" : path2;
+}
+function listenHealthPort(port) {
+  return new Promise((resolve, reject) => {
+    const server = http$1.createServer((req, res) => {
+      const path2 = requestPath$1(req.url);
+      if (req.method === "GET" && (path2 === "/" || path2 === "/health")) {
+        res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+        res.end("ok");
+        return;
+      }
+      res.writeHead(404);
+      res.end();
+    });
+    server.once("error", reject);
+    server.listen(port, "0.0.0.0", () => resolve(server));
+  });
+}
+function requestPath(url) {
+  const path2 = (url ?? "/").split("?")[0];
+  return path2 === "" ? "/" : path2;
+}
+async function listenWebhook() {
+  const webhookUrl = env.WEBHOOK_URL;
+  if (!webhookUrl) {
+    throw new Error("WEBHOOK_URL не задан (нужен при MODE=webhook)");
+  }
+  const parsed = new URL(webhookUrl);
+  const pathname = parsed.pathname || "/";
+  const secret = env.WEBHOOK_SECRET;
+  const handle = secret ? grammy.webhookCallback(bot, "http", { secretToken: secret }) : grammy.webhookCallback(bot, "http");
+  const server = http$1.createServer((req, res) => {
+    const path2 = requestPath(req.url);
+    if (req.method === "GET" && (path2 === "/" || path2 === "/health")) {
+      res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+      res.end("ok");
+      return;
+    }
+    if (req.method === "POST" && path2 === pathname) {
+      void handle(req, res);
+      return;
+    }
+    res.writeHead(404);
+    res.end();
+  });
+  const port = Number(process.env.PORT) || 3e3;
+  await new Promise((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "0.0.0.0", () => resolve());
+  });
+  console.log(`HTTP 0.0.0.0:${port}, webhook POST path: ${pathname}`);
+  await bot.api.setWebhook(
+    webhookUrl,
+    secret ? { secret_token: secret } : void 0
+  );
+  console.log(`Telegram webhook: ${webhookUrl}`);
+  return server;
+}
+async function shutdownWebhook(server) {
+  await bot.api.deleteWebhook({ drop_pending_updates: false });
+  await new Promise((resolve, reject) => {
+    server.close((err) => err ? reject(err) : resolve());
+  });
+}
+function registerGracefulShutdown(httpServer) {
+  const shutdown = async () => {
+    try {
+      if (env.MODE === "webhook" && httpServer) {
+        await shutdownWebhook(httpServer);
+      } else {
+        if (httpServer) {
+          await new Promise((resolve, reject) => {
+            httpServer.close((err) => err ? reject(err) : resolve());
+          });
+        }
+        await bot.stop();
+      }
+    } catch (e) {
+      console.error("Shutdown error:", e);
+    } finally {
+      process.exit(0);
+    }
+  };
+  process.once("SIGINT", () => void shutdown());
+  process.once("SIGTERM", () => void shutdown());
+}
+const isRender = process.env.RENDER === "true";
 (async () => {
   try {
-    console.log("🚀 Запускаю бота...");
+    console.log(`🚀 Запуск (MODE=${env.MODE})...`);
     await initDatabase();
-    await bot.start();
+    let httpServer = null;
+    if (env.MODE === "webhook") {
+      httpServer = await listenWebhook();
+    } else {
+      if (isRender) {
+        const port = Number(process.env.PORT);
+        if (!Number.isFinite(port) || port <= 0) {
+          throw new Error(
+            "На Render задайте переменную PORT (задаётся платформой автоматически для Web Service)."
+          );
+        }
+        httpServer = await listenHealthPort(port);
+        console.log(
+          `Health check 0.0.0.0:${port} (Render + polling, long polling к Telegram отдельно)`
+        );
+      }
+      await bot.start();
+    }
+    registerGracefulShutdown(httpServer);
     console.log("✅ Бот успешно запущен!");
   } catch (err) {
     console.error("❌ Ошибка запуска:", err);
