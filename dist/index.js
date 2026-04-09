@@ -289,9 +289,24 @@ async function runAutoPublish(api, draftId) {
     );
   }
 }
+function isCallbackQueryExpiredError(e) {
+  const s = String(e).toLowerCase();
+  return s.includes("query is too old") || s.includes("query id is invalid") || s.includes("response timeout expired");
+}
+async function answerCallbackSafe(ctx, options) {
+  try {
+    await ctx.answerCallbackQuery(options);
+  } catch (e) {
+    if (isCallbackQueryExpiredError(e)) {
+      console.warn("[tg] answerCallbackQuery пропущен (истёк или уже отвечен):", e);
+      return;
+    }
+    throw e;
+  }
+}
 const CHANNEL_ID$2 = env.TELEGRAM_CHANEL_ID;
 const cancelEvent = async (ctx) => {
-  await ctx.answerCallbackQuery({ text: "Отменено" });
+  await answerCallbackSafe(ctx, { text: "Отменено" });
   const session = SessionStore$1.get(CHANNEL_ID$2);
   clearDraftAutoPublish(session?.draftId);
   SessionStore$1.clear(CHANNEL_ID$2);
@@ -307,11 +322,11 @@ const VALID_STYLES = new Set(Object.values(PostTemplate));
 const publishStyleEvent = async (ctx) => {
   const key = ctx.callbackQuery?.data?.replace("publish:", "") ?? "";
   if (!VALID_STYLES.has(key)) {
-    await ctx.answerCallbackQuery({ text: "Неизвестный вариант" });
+    await answerCallbackSafe(ctx, { text: "Неизвестный вариант" });
     return;
   }
   const style = key;
-  await ctx.answerCallbackQuery();
+  await answerCallbackSafe(ctx);
   const session = SessionStore$1.get(CHANNEL_ID$1);
   const text = session?.generatedPost;
   const title = session?.draftTitle;
@@ -866,7 +881,7 @@ const generatePostJob = async (api, source) => {
 const sourceEvent = async (ctx) => {
   try {
     const source = ctx.callbackQuery?.data?.replace("source:", "");
-    await ctx.answerCallbackQuery();
+    await answerCallbackSafe(ctx);
     await generatePostJob(ctx.api, source);
   } catch (error) {
     await ctx.reply(`❌ Не удалось опубликовать пост. ${error}`);

@@ -7,6 +7,7 @@ import {
 } from "services/publish-draft.service";
 import SessionStore from "store/session/session.store";
 import { MyContext } from "types";
+import { answerCallbackSafe } from "utils/safeAnswerCallback";
 
 const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 
@@ -15,12 +16,12 @@ const VALID_STYLES = new Set<string>(Object.values(PostTemplate));
 export const publishStyleEvent = async (ctx: MyContext) => {
   const key = ctx.callbackQuery?.data?.replace("publish:", "") ?? "";
   if (!VALID_STYLES.has(key)) {
-    await ctx.answerCallbackQuery({ text: "Неизвестный вариант" });
+    await answerCallbackSafe(ctx, { text: "Неизвестный вариант" });
     return;
   }
   const style = key as PostTemplate;
 
-  await ctx.answerCallbackQuery();
+  await answerCallbackSafe(ctx);
 
   const session = SessionStore.get(CHANNEL_ID);
   const text = session?.generatedPost;
