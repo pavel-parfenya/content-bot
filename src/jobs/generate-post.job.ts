@@ -30,6 +30,13 @@ export const generatePostJob = async (api: Api<RawApi>, source: Source) => {
       return;
     }
     const { title, text, imageUrl } = result;
+    if (!title?.trim() || !text?.trim() || !imageUrl?.trim()) {
+      await api.sendMessage(
+        ADMIN_ID,
+        "Не удалось получить материал для поста: источник не ответил вовремя, вернул пустую страницу или нет картинки. Посмотрите логи сервера (часто это таймаут или блокировка запросов к hawk.live).",
+      );
+      return;
+    }
     const previewImage = await urlToBuffer(imageUrl);
     const allowsBackgroundTemplate =
       await isImageGoodForFullBleed(previewImage);
