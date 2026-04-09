@@ -235,7 +235,7 @@ async function pickAutoPublishTemplate(buffer) {
   return Math.random() < 0.5 ? PostTemplate.Classic : PostTemplate.None;
 }
 const CHANNEL_ID$3 = env.TELEGRAM_CHANEL_ID;
-const ADMIN_ID$1 = env.TELEGRAM_ADMIN_ID;
+const ADMIN_ID$2 = env.TELEGRAM_ADMIN_ID;
 const AUTO_PUBLISH_MS = 5 * 60 * 1e3;
 const pending = /* @__PURE__ */ new Map();
 function clearDraftAutoPublish(draftId) {
@@ -279,12 +279,12 @@ async function runAutoPublish(api, draftId) {
       session.adminPreviewMessageId
     );
     await api.sendMessage(
-      ADMIN_ID$1,
+      ADMIN_ID$2,
       `✅ Пост опубликован автоматически («${postTemplateLabel(style)}»). Таймаут 5 мин без выбора.`
     );
   } catch (error) {
     await api.sendMessage(
-      ADMIN_ID$1,
+      ADMIN_ID$2,
       `❌ Автопубликация не удалась: ${error}`
     );
   }
@@ -318,6 +318,7 @@ const cancelEvent = async (ctx) => {
   }
 };
 const CHANNEL_ID$1 = env.TELEGRAM_CHANEL_ID;
+const ADMIN_ID$1 = env.TELEGRAM_ADMIN_ID;
 const VALID_STYLES = new Set(Object.values(PostTemplate));
 const publishStyleEvent = async (ctx) => {
   const key = ctx.callbackQuery?.data?.replace("publish:", "") ?? "";
@@ -343,19 +344,27 @@ const publishStyleEvent = async (ctx) => {
     return;
   }
   const draftId = session.draftId;
-  try {
-    await publishDraftToChannel(ctx.api, style, session);
-    clearDraftAutoPublish(draftId);
-    SessionStore$1.clear(CHANNEL_ID$1);
-    await stripAdminDraftKeyboard(
-      ctx.api,
-      ctx.chat?.id,
-      ctx.callbackQuery?.message?.message_id
-    );
-    await ctx.reply("✅ Пост опубликован!");
-  } catch (error) {
-    await ctx.reply(`❌ Не удалось опубликовать. ${error}`);
-  }
+  void (async () => {
+    try {
+      await publishDraftToChannel(ctx.api, style, session);
+      clearDraftAutoPublish(draftId);
+      SessionStore$1.clear(CHANNEL_ID$1);
+      await stripAdminDraftKeyboard(
+        ctx.api,
+        ctx.chat?.id,
+        ctx.callbackQuery?.message?.message_id
+      );
+      await ctx.reply("✅ Пост опубликован!");
+    } catch (error) {
+      const msg = `❌ Не удалось опубликовать. ${error}`;
+      try {
+        await ctx.reply(msg);
+      } catch {
+        await ctx.api.sendMessage(ADMIN_ID$1, msg).catch(() => {
+        });
+      }
+    }
+  })().catch((err) => console.error("publishStyleEvent:", err));
 };
 const duplicateCheckSystemPrompt = `
 Ты сравниваешь заголовки новостей для дедупликации.
@@ -882,9 +891,11 @@ const sourceEvent = async (ctx) => {
   try {
     const source = ctx.callbackQuery?.data?.replace("source:", "");
     await answerCallbackSafe(ctx);
-    await generatePostJob(ctx.api, source);
+    void generatePostJob(ctx.api, source).catch((err) => {
+      console.error("generatePostJob:", err);
+    });
   } catch (error) {
-    await ctx.reply(`❌ Не удалось опубликовать пост. ${error}`);
+    await ctx.reply(`❌ Не удалось запустить генерацию. ${error}`);
   }
 };
 function getRandomEnumValue(enumObj) {

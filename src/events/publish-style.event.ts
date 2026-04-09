@@ -10,6 +10,7 @@ import { MyContext } from "types";
 import { answerCallbackSafe } from "utils/safeAnswerCallback";
 
 const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
+const ADMIN_ID = env.TELEGRAM_ADMIN_ID;
 
 const VALID_STYLES = new Set<string>(Object.values(PostTemplate));
 
@@ -45,17 +46,25 @@ export const publishStyleEvent = async (ctx: MyContext) => {
   }
 
   const draftId = session.draftId;
-  try {
-    await publishDraftToChannel(ctx.api, style, session);
-    clearDraftAutoPublish(draftId);
-    SessionStore.clear(CHANNEL_ID);
-    await stripAdminDraftKeyboard(
-      ctx.api,
-      ctx.chat?.id,
-      ctx.callbackQuery?.message?.message_id,
-    );
-    await ctx.reply("✅ Пост опубликован!");
-  } catch (error) {
-    await ctx.reply(`❌ Не удалось опубликовать. ${error}`);
-  }
+
+  void (async () => {
+    try {
+      await publishDraftToChannel(ctx.api, style, session);
+      clearDraftAutoPublish(draftId);
+      SessionStore.clear(CHANNEL_ID);
+      await stripAdminDraftKeyboard(
+        ctx.api,
+        ctx.chat?.id,
+        ctx.callbackQuery?.message?.message_id,
+      );
+      await ctx.reply("✅ Пост опубликован!");
+    } catch (error) {
+      const msg = `❌ Не удалось опубликовать. ${error}`;
+      try {
+        await ctx.reply(msg);
+      } catch {
+        await ctx.api.sendMessage(ADMIN_ID, msg).catch(() => {});
+      }
+    }
+  })().catch((err) => console.error("publishStyleEvent:", err));
 };
