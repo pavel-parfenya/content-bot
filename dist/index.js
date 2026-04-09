@@ -52,6 +52,15 @@ async function startCommand(ctx) {
 dotenv.config({
   path: process.env.NODE_ENV ? `.env.${process.env.NODE_ENV}` : ".env"
 });
+function requireDatabaseUrl() {
+  const raw = process.env.DATABASE_URL?.trim();
+  if (!raw) {
+    throw new Error(
+      "DATABASE_URL не задан. На Render: создай PostgreSQL и в Environment веб-сервиса задай DATABASE_URL = Internal Database URL из панели БД (хост вида dpg-….render.com, порт в строке обычно 5432). В контейнере нельзя подключаться к localhost:5432 — там нет Postgres."
+    );
+  }
+  return raw;
+}
 const env = {
   TELEGRAM_BOT_TOKEN: process.env.BOT_TOKEN,
   TELEGRAM_CHANEL_ID: process.env.CHANEL_ID,
@@ -59,7 +68,8 @@ const env = {
   DEEPSEEK_API_KEY: process.env.DEEPSEEK_API_KEY,
   NODE_ENV: process.env.NODE_ENV || "dev",
   POST_FREQ_MINUTES: process.env.POST_FREQ_MINUTES,
-  DATABASE_URL: process.env.DATABASE_URL
+  DATABASE_URL: requireDatabaseUrl(),
+  DATABASE_SCHEMA: (process.env.DATABASE_SCHEMA ?? "content_bot").trim() || "content_bot"
 };
 var PostTemplate = /* @__PURE__ */ ((PostTemplate2) => {
   PostTemplate2["Classic"] = "Classic";
@@ -407,22 +417,45 @@ const DeepseekService = {
   }
 };
 let pool = null;
+function poolOptions() {
+  const connectionString = env.DATABASE_URL;
+  const hostLooksRemote = connectionString.includes("render.com") || connectionString.includes("neon.tech") || connectionString.includes("supabase.co");
+  return {
+    connectionString,
+    ...hostLooksRemote ? { ssl: { rejectUnauthorized: false } } : void 0
+  };
+}
 function getPool() {
   if (!pool) {
-    pool = new pg.Pool({ connectionString: env.DATABASE_URL });
+    pool = new pg.Pool(poolOptions());
   }
   return pool;
 }
+const IDENT = /^[a-z_][a-z0-9_]*$/i;
+function quoteIdent(ident) {
+  const s = ident.trim();
+  if (!IDENT.test(s)) {
+    throw new Error(`Недопустимый идентификатор БД: ${JSON.stringify(s)}`);
+  }
+  return `"${s.replace(/"/g, '""')}"`;
+}
+function getDbSchema() {
+  return env.DATABASE_SCHEMA;
+}
+function qualifiedTable(tableName) {
+  return `${quoteIdent(getDbSchema())}.${quoteIdent(tableName)}`;
+}
+const NEWS = qualifiedTable("news");
 const NewsStore = {
   getAll: async () => {
     const { rows } = await getPool().query(
-      "SELECT title FROM news ORDER BY id ASC"
+      `SELECT title FROM ${NEWS} ORDER BY id ASC`
     );
     return rows.map((r) => r.title);
   },
   add: async (title) => {
     const result = await getPool().query(
-      "INSERT INTO news (title) VALUES ($1) ON CONFLICT (title) DO NOTHING",
+      `INSERT INTO ${NEWS} (title) VALUES ($1) ON CONFLICT (title) DO NOTHING`,
       [title]
     );
     if (result.rowCount && result.rowCount > 0) {
@@ -837,8 +870,11 @@ if (env.NODE_ENV === "prod") {
 }
 async function initDatabase() {
   const pool2 = getPool();
+  const schema = getDbSchema();
+  await pool2.query(`CREATE SCHEMA IF NOT EXISTS ${quoteIdent(schema)}`);
+  const newsTable = `${quoteIdent(schema)}.${quoteIdent("news")}`;
   await pool2.query(`
-    CREATE TABLE IF NOT EXISTS news (
+    CREATE TABLE IF NOT EXISTS ${newsTable} (
       id SERIAL PRIMARY KEY,
       title TEXT NOT NULL UNIQUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
