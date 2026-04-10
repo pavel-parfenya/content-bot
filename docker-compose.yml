@@ -1,12 +1,12 @@
-# Бот и Postgres в одной сети: хост БД в DATABASE_URL — всегда `db` (имя сервиса ниже).
-# Переменные из `.env` подхватываются через env_file; DATABASE_URL здесь переопределяет
-# значение из `.env`, если там указан localhost — иначе контейнер бота не достучится до Postgres.
+# Запуск: docker compose up -d --build
+# Логи:   docker compose logs -f bot
 #
-# Запуск из каталога с проектом: docker compose up -d --build
-# Логи бота:                      docker compose logs -f bot
+# Сервис `bot` использует network_mode: host (Linux), чтобы исходящий трафик шёл как у хоста
+# (часто нужно, если из bridge-сети Docker до api.telegram.org таймаут, а с хоста curl — ок).
+# Postgres остаётся в обычной сети с пробросом порта на localhost; бот подключается к БД по 127.0.0.1.
 #
-# Если из контейнера таймаут до api.telegram.org, а с хоста curl работает — сеть Docker/IPv4/IPv6
-# на стороне VPS; это не лечится этим файлом (см. документацию Docker IPv6 или прокси).
+# На Docker Desktop (Mac/Windows) host network работает иначе — при необходимости уберите
+# network_mode и верните DATABASE_URL с хостом `db` + настройте IPv6 для Docker.
 
 services:
   db:
@@ -28,6 +28,7 @@ services:
   bot:
     build: .
     restart: unless-stopped
+    network_mode: host
     env_file:
       - .env
     depends_on:
@@ -35,8 +36,8 @@ services:
         condition: service_healthy
     environment:
       NODE_ENV: prod
-      # Обязательно хост `db`, не localhost (имя сервиса в этой compose-сети).
-      DATABASE_URL: postgresql://${POSTGRES_USER:-contentbot}:${POSTGRES_PASSWORD:-contentbot}@db:5432/${POSTGRES_DB:-contentbot}
+      # Через host network имя `db` недоступно — только localhost и опубликованный порт Postgres.
+      DATABASE_URL: postgresql://${POSTGRES_USER:-contentbot}:${POSTGRES_PASSWORD:-contentbot}@127.0.0.1:${POSTGRES_PORT:-5432}/${POSTGRES_DB:-contentbot}
       MODE: ${MODE:-polling}
       DATABASE_SCHEMA: ${DATABASE_SCHEMA:-content_bot}
       WEBHOOK_URL: ${WEBHOOK_URL:-}
