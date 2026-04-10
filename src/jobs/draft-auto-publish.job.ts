@@ -7,6 +7,7 @@ import {
 } from "services/publish-draft.service";
 import SessionStore from "store/session/session.store";
 import { pickAutoPublishTemplate } from "utils/pickAutoPublishTemplate";
+import { errorMessageForUser } from "utils/redactSecrets";
 
 const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 const ADMIN_ID = env.TELEGRAM_ADMIN_ID;
@@ -73,7 +74,7 @@ async function runAutoPublish(
   } catch (error) {
     await api.sendMessage(
       ADMIN_ID,
-      `❌ Автопубликация не удалась: ${error}`,
+      `❌ Автопубликация не удалась: ${errorMessageForUser(error)}`,
     );
   }
 }

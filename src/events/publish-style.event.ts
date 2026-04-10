@@ -8,6 +8,7 @@ import {
 import SessionStore from "store/session/session.store";
 import { MyContext } from "types";
 import { answerCallbackSafe } from "utils/safeAnswerCallback";
+import { errorMessageForUser, sanitizeErrorForLogs } from "utils/redactSecrets";
 
 const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 const ADMIN_ID = env.TELEGRAM_ADMIN_ID;
@@ -59,12 +60,14 @@ export const publishStyleEvent = async (ctx: MyContext) => {
       );
       await ctx.reply("✅ Пост опубликован!");
     } catch (error) {
-      const msg = `❌ Не удалось опубликовать. ${error}`;
+      const msg = `❌ Не удалось опубликовать. ${errorMessageForUser(error)}`;
       try {
         await ctx.reply(msg);
       } catch {
         await ctx.api.sendMessage(ADMIN_ID, msg).catch(() => {});
       }
     }
-  })().catch((err) => console.error("publishStyleEvent:", err));
+  })().catch((err) =>
+    console.error("publishStyleEvent:", sanitizeErrorForLogs(err)),
+  );
 };

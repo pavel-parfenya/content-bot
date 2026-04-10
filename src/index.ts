@@ -5,6 +5,7 @@ import { initDatabase } from "db/init";
 import { listenHealthPort } from "server/health-port";
 import { registerGracefulShutdown } from "server/shutdown";
 import { listenWebhook } from "server/webhook";
+import { sanitizeErrorForLogs } from "utils/redactSecrets";
 import type { Server } from "http";
 
 const isRender = process.env.RENDER === "true";
@@ -37,7 +38,7 @@ const isRender = process.env.RENDER === "true";
     registerGracefulShutdown(httpServer);
     console.log("✅ Бот успешно запущен!");
   } catch (err) {
-    console.error("❌ Ошибка запуска:", err);
+    console.error("❌ Ошибка запуска:\n" + sanitizeErrorForLogs(err));
     process.exit(1);
   }
 })();

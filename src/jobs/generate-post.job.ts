@@ -10,6 +10,7 @@ import { MAX_NEWS_PICK_ATTEMPTS } from "services/semantic-news.service";
 import { PostService } from "services/post.service";
 import SessionStore from "store/session/session.store";
 import { isImageGoodForFullBleed } from "utils/isImageGoodForFullBleed";
+import { errorMessageForUser, sanitizeErrorForLogs } from "utils/redactSecrets";
 import { urlToBuffer } from "utils/urlToBuffer";
 
 const ADMIN_ID = env.TELEGRAM_ADMIN_ID;
@@ -74,9 +75,10 @@ export const generatePostJob = async (api: Api<RawApi>, source: Source) => {
       scheduleDraftAutoPublish(draftId, api);
     }
   } catch (error) {
+    console.error("generatePostJob:", sanitizeErrorForLogs(error));
     await api.sendMessage(
       ADMIN_ID,
-      `Произошла ошибка при генерации поста 😥 ${error}`,
+      `Произошла ошибка при генерации поста 😥 ${errorMessageForUser(error)}`,
     );
   }
 };
