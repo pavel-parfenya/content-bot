@@ -18,12 +18,14 @@ export async function pickFirstNonDuplicateTitle(
     return { kind: "empty" };
   }
   const existingTitles = await NewsStore.getAll();
-  if (existingTitles.length === 0) {
-    return { kind: "ok", title: candidates[0] };
-  }
   const slice = existingTitles.slice(-MAX_EXISTING_TITLES);
 
   for (const candidate of candidates.slice(0, MAX_NEWS_PICK_ATTEMPTS)) {
+    if (await DeepseekService.isJunkListingTitle(candidate)) {
+      console.log("Пропуск заголовка (реклама/квиз/розыгрыш):", candidate);
+      await NewsStore.add(candidate);
+      continue;
+    }
     const r = await DeepseekService.compareSemanticDuplicate(
       candidate,
       slice,

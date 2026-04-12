@@ -1,5 +1,6 @@
 import axios from "axios";
 import { duplicateCheckSystemPrompt } from "constants/prompts/duplicate.prompt";
+import { junkListingTitleSystemPrompt } from "constants/prompts/junk-title.prompt";
 import { systemPrompt } from "constants/prompts/system.prompt";
 import { config } from "dotenv";
 
@@ -15,6 +16,36 @@ function extractJsonObject(text: string): unknown {
 }
 
 export const DeepseekService = {
+  isJunkListingTitle: async (title: string): Promise<boolean> => {
+    console.log("DeepSeek: проверка заголовка на рекламу/квиз/розыгрыш");
+    const chatRes = await axios.post(
+      "https://api.deepseek.com/v1/chat/completions",
+      {
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: junkListingTitleSystemPrompt },
+          { role: "user", content: JSON.stringify({ title }) },
+        ],
+        temperature: 0.1,
+        top_p: 0.9,
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      },
+    );
+    const content = chatRes.data.choices[0].message.content.trim();
+    try {
+      const parsed = extractJsonObject(content) as { junk?: boolean };
+      return Boolean(parsed.junk);
+    } catch (e) {
+      console.error("DeepSeek junk-title JSON parse error:", e, content);
+      return false;
+    }
+  },
+
   compareSemanticDuplicate: async (
     candidateTitle: string,
     existingTitles: string[],

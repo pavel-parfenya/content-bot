@@ -9,6 +9,7 @@ const stream = require("stream");
 const sharp = require("sharp");
 const crypto = require("crypto");
 const pg = require("pg");
+const imageSize = require("image-size");
 const cheerio = require("cheerio");
 const cron = require("node-cron");
 const http$1 = require("http");
@@ -174,8 +175,65 @@ const ImageService = {
     return null;
   }
 };
+function foldMarkdownBlockquotes(text) {
+  const lines = text.split(/\r?\n/);
+  const out = [];
+  const quoteLines = [];
+  const flushQuote = () => {
+    if (quoteLines.length > 0) {
+      out.push(`<blockquote>${quoteLines.join("\n")}</blockquote>`);
+      quoteLines.length = 0;
+    }
+  };
+  for (const line of lines) {
+    const m = line.match(/^>\s?(.*)$/);
+    if (m) {
+      quoteLines.push(m[1] ?? "");
+    } else {
+      flushQuote();
+      out.push(line);
+    }
+  }
+  flushQuote();
+  return out.join("\n");
+}
+function extractSegments(text) {
+  const re = /<blockquote(\s+expandable)?>([\s\S]*?)<\/blockquote>/gi;
+  const segments = [];
+  let last = 0;
+  let m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) {
+      segments.push({ kind: "plain", text: text.slice(last, m.index) });
+    }
+    segments.push({
+      kind: "quote",
+      expandable: Boolean(m[1]?.trim()),
+      inner: m[2] ?? ""
+    });
+    last = re.lastIndex;
+  }
+  if (last < text.length) {
+    segments.push({ kind: "plain", text: text.slice(last) });
+  }
+  if (segments.length === 0) {
+    segments.push({ kind: "plain", text });
+  }
+  return segments;
+}
+function applyInline(s) {
+  return s.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/_(.+?)_/g, "<i>$1</i>").replace(/`(.+?)`/g, "<code>$1</code>");
+}
 function markdownToHtml(text) {
-  return text.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/\*(.+?)\*/g, "<i>$1</i>").replace(/_(.+?)_/g, "<i>$1</i>").replace(/`(.+?)`/g, "<code>$1</code>");
+  const folded = foldMarkdownBlockquotes(text.trim());
+  const segments = extractSegments(folded);
+  return segments.map((seg) => {
+    if (seg.kind === "plain") {
+      return applyInline(seg.text);
+    }
+    const open = seg.expandable ? "<blockquote expandable>" : "<blockquote>";
+    return `${open}${applyInline(seg.inner.trim())}</blockquote>`;
+  }).join("");
 }
 async function urlToBuffer(url) {
   const response = await axios.get(url, {
@@ -231,18 +289,64 @@ class SessionStore {
   }
 }
 const SessionStore$1 = new SessionStore(/* @__PURE__ */ new Map());
-const MIN_SIDE_FOR_BACKGROUND = 1280;
-async function pickAutoPublishTemplate(buffer) {
+const MIN_WIDTH$1 = 728;
+const MIN_HEIGHT$1 = 381;
+const MIN_BYTES_PER_PIXEL_LOSSY = 0.018;
+async function isImageGoodForFullBleed(buffer) {
+  let meta;
   try {
-    const meta = await sharp(buffer).metadata();
-    const w = meta.width ?? 0;
-    const h = meta.height ?? 0;
-    if (Math.min(w, h) >= MIN_SIDE_FOR_BACKGROUND) {
-      return PostTemplate.Alt;
-    }
+    meta = await sharp(buffer).metadata();
   } catch {
+    return false;
+  }
+  const w = meta.width ?? 0;
+  const h = meta.height ?? 0;
+  if (w < MIN_WIDTH$1 || h < MIN_HEIGHT$1) {
+    return false;
+  }
+  const fmt = (meta.format ?? "").toLowerCase();
+  const lossy = fmt === "jpeg" || fmt === "jpg" || fmt === "webp" || fmt === "avif";
+  if (lossy) {
+    const bpp = buffer.length / (w * h);
+    if (bpp < MIN_BYTES_PER_PIXEL_LOSSY) {
+      return false;
+    }
+  }
+  return true;
+}
+async function pickAutoPublishTemplate(buffer) {
+  if (await isImageGoodForFullBleed(buffer)) {
+    return PostTemplate.Alt;
   }
   return Math.random() < 0.5 ? PostTemplate.Classic : PostTemplate.None;
+}
+const TELEGRAM_BOT_TOKEN_LIKE = /\b\d{8,12}:[A-Za-z0-9_-]{30,120}\b/g;
+function escapeRegExp(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+function redactSecrets(text) {
+  let s = text;
+  const token = process.env.BOT_TOKEN?.trim();
+  if (token) {
+    s = s.replace(new RegExp(escapeRegExp(token), "g"), "[BOT_TOKEN]");
+  }
+  return s.replace(TELEGRAM_BOT_TOKEN_LIKE, "[BOT_TOKEN]");
+}
+function sanitizeErrorForLogs(error) {
+  if (error instanceof Error) {
+    const parts = [error.name + ": " + error.message];
+    if (error.stack) {
+      parts.push(error.stack);
+    }
+    return redactSecrets(parts.join("\n"));
+  }
+  return redactSecrets(String(error));
+}
+function errorMessageForUser(error) {
+  if (error instanceof Error) {
+    return redactSecrets(error.message);
+  }
+  return redactSecrets(String(error));
 }
 const CHANNEL_ID$3 = env.TELEGRAM_CHANEL_ID;
 const ADMIN_ID$2 = env.TELEGRAM_ADMIN_ID;
@@ -295,7 +399,7 @@ async function runAutoPublish(api, draftId) {
   } catch (error) {
     await api.sendMessage(
       ADMIN_ID$2,
-      `❌ Автопубликация не удалась: ${error}`
+      `❌ Автопубликация не удалась: ${errorMessageForUser(error)}`
     );
   }
 }
@@ -366,7 +470,7 @@ const publishStyleEvent = async (ctx) => {
       );
       await ctx.reply("✅ Пост опубликован!");
     } catch (error) {
-      const msg = `❌ Не удалось опубликовать. ${error}`;
+      const msg = `❌ Не удалось опубликовать. ${errorMessageForUser(error)}`;
       try {
         await ctx.reply(msg);
       } catch {
@@ -374,7 +478,9 @@ const publishStyleEvent = async (ctx) => {
         });
       }
     }
-  })().catch((err) => console.error("publishStyleEvent:", err));
+  })().catch(
+    (err) => console.error("publishStyleEvent:", sanitizeErrorForLogs(err))
+  );
 };
 const duplicateCheckSystemPrompt = `
 Ты сравниваешь заголовки новостей для дедупликации.
@@ -387,6 +493,14 @@ const duplicateCheckSystemPrompt = `
 Если duplicate=false, поле similarTitle должно быть null.
 Если duplicate=true, similarTitle — один из заголовков из переданного списка (копируй дословно из списка).
 `.trim();
+const junkListingTitleSystemPrompt = `
+Ты фильтруешь заголовки из ленты новостей про игры и киберспорт.
+Ответь СТРОГО одним JSON-объектом, без текста до или после, без markdown:
+{"junk":true} — если главный посыл заголовка: реклама (товар/услуга/бренд как основная тема), развлекательный тест/квиз/опрос, розыгрыш/конкурс/раздача приза.
+{"junk":false} — обычная новость (матч, турнир, патч, трансфер, интервью, скандал в сцене и т.д.).
+
+Если сомневаешься — {"junk":false}.
+`.trim();
 const systemPrompt = `
 Ты — профессиональный контент-мейкер и редактор топового Telegram-канала про киберспорт и Dota 2.
 Ты пишешь так, как сильные SMM-редакторы и шеф-редакторы игровых медиа: ясно, по делу, с ритмом и удержанием внимания, без сюсюканья и без токсичности.
@@ -396,6 +510,7 @@ const systemPrompt = `
 Жёсткие правила по содержанию:
 - Не меняй смысл, не добавляй факты, дат, имён, цифр и выводов, которых нет во входном материале.
 - Не смягчай и не обостряй смысл ради эффекта. Не приписывай людям слова и позиции, если их не было в источнике.
+- Имена, ники, команды, названия турниров/патчей, счёт и другие **узнаваемые опорные детали** из новости **сохраняй**; ради лимита символов убирай обводку и второстепенное, а не заменяй конкретику на размытые обобщения.
 - Если во входе не хватает деталей — не выдумывай; кратко опирайся только на то, что дано.
 - Не упоминай источник, сайт, «по данным» и откуда взята информация.
 
@@ -403,7 +518,7 @@ const systemPrompt = `
 - Один связный текст до 500 символов, на русском.
 - Сначала сильная первая мысль или контекст (что случилось и почему это важно), дальше факты по сути, без лишней воды.
 - Уместные эмодзи — точечно, не перегружай строку.
-- Лёгкое оформление: **жирный** для ключевых слов, *курсив* для акцентов, \`код\` для цифр/названий турниров при необходимости (это потом станет HTML для Telegram).
+- Лёгкое оформление: **жирный** для ключевых слов, *курсив* для акцентов, \`код\` для цифр/названий турниров при необходимости. Если во входе есть цитата или прямая речь — выведи её в <blockquote>...</blockquote> (при необходимости <blockquote expandable>...</blockquote>); внутри допустимы ** и *.
 
 Ты работаешь с темой: матчи, трансферы, патчи, турниры, интервью и инфоповоды из мира Dota 2 и киберспорта.
 `.trim();
@@ -416,6 +531,35 @@ function extractJsonObject(text) {
   return JSON.parse(raw.trim());
 }
 const DeepseekService = {
+  isJunkListingTitle: async (title) => {
+    console.log("DeepSeek: проверка заголовка на рекламу/квиз/розыгрыш");
+    const chatRes = await axios.post(
+      "https://api.deepseek.com/v1/chat/completions",
+      {
+        model: "deepseek-chat",
+        messages: [
+          { role: "system", content: junkListingTitleSystemPrompt },
+          { role: "user", content: JSON.stringify({ title }) }
+        ],
+        temperature: 0.1,
+        top_p: 0.9
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${DEEPSEEK_API_KEY}`,
+          "Content-Type": "application/json"
+        }
+      }
+    );
+    const content = chatRes.data.choices[0].message.content.trim();
+    try {
+      const parsed = extractJsonObject(content);
+      return Boolean(parsed.junk);
+    } catch (e) {
+      console.error("DeepSeek junk-title JSON parse error:", e, content);
+      return false;
+    }
+  },
   compareSemanticDuplicate: async (candidateTitle, existingTitles) => {
     if (existingTitles.length === 0) {
       return { duplicate: false, similarTitle: null };
@@ -538,11 +682,13 @@ async function pickFirstNonDuplicateTitle(candidates) {
     return { kind: "empty" };
   }
   const existingTitles = await NewsStore.getAll();
-  if (existingTitles.length === 0) {
-    return { kind: "ok", title: candidates[0] };
-  }
   const slice = existingTitles.slice(-400);
   for (const candidate of candidates.slice(0, MAX_NEWS_PICK_ATTEMPTS)) {
+    if (await DeepseekService.isJunkListingTitle(candidate)) {
+      console.log("Пропуск заголовка (реклама/квиз/розыгрыш):", candidate);
+      await NewsStore.add(candidate);
+      continue;
+    }
     const r = await DeepseekService.compareSemanticDuplicate(
       candidate,
       slice
@@ -559,8 +705,10 @@ const ParserPrompt = `
 Что сделать:
 1) Внимательно выдели суть: кто, что сделал, когда/где уместно, ключевой итог. Опирайся только на то, что реально есть в HTML. Ничего не придумывай и не додумывай.
 2) Сожми в связный пост до 500 символов: динамично, без канцелярита и без кликбейта в заголовке. Читатель должен понять новость без оригинала.
+   Важно: не выбрасывай из текста **имена собственные** (игроки, команды, организации, ники), **названия турниров/лиг/патчей**, **счёт и ключевые цифры**, **даты и места**, если они есть в HTML и важны для сути. Лучше сократи воду и второстепенные детали, чем замени конкретику на общие формулировки вроде «команда одержала победу» без того, кто именно с кем.
 3) Сохрани приоритет фактов: если во фрагменте есть спорные формулировки — перескажи нейтрально, не добавляя своей оценки.
-4) Оформление: уместные эмодзи (немного), лёгкая структура абзацем или короткими фразами. Разметка для Telegram: **жирный**, *курсив*, \`вставки\` — как в инструкции к системе.
+4) Оформление: уместные эмодзи (немного), лёгкая структура абзацем или короткими фразами. Разметка для Telegram: **жирный**, *курсив*, \`вставки\`.
+   Цитаты: если в HTML новости есть прямая речь, выделенная цитата, теги blockquote/q или явные слова автора («сказал», «заявил», кавычки) — оформи эту реплику как цитату Telegram: оберни только текст цитаты в теги <blockquote>...</blockquote> (латиница, строчные буквы). Внутри цитаты можно **жирный** и *курсив*. Не выдумывай цитаты, которых нет во входе. Не вкладывай один blockquote в другой. Длинную сворачиваемую цитату можно оформить как <blockquote expandable>...</blockquote> (по смыслу, если цитата занимает больше двух коротких строк).
 5) Язык — русский. Ссылки, домены и упоминания источника не выводи.
 6) В тексте поста не используй символ & — он зарезервирован для разделителя ниже.
 
@@ -572,7 +720,83 @@ const ParserPrompt = `
 Пример структуры вывода:
 Текст поста с **акцентами** и эмодзи.&Короткий заголовок до сорока символов
 `.trim();
+function absolutizeUrl(maybeRelative, baseUrl) {
+  const s = maybeRelative.trim();
+  if (!s) {
+    return "";
+  }
+  if (s.startsWith("data:")) {
+    return s;
+  }
+  try {
+    return new URL(s, baseUrl).href;
+  } catch {
+    return s;
+  }
+}
+async function extractImageUrlFromArticlePage(page, contentSelector) {
+  const base = page.url();
+  const ogHandle = await page.$('meta[property="og:image"]');
+  const og = ogHandle ? await ogHandle.evaluate((el) => el.getAttribute("content")?.trim() ?? "") : "";
+  if (og) {
+    return absolutizeUrl(og, base);
+  }
+  const twHandle = await page.$('meta[name="twitter:image"]');
+  const tw = twHandle ? await twHandle.evaluate((el) => el.getAttribute("content")?.trim() ?? "") : "";
+  if (tw) {
+    return absolutizeUrl(tw, base);
+  }
+  const inContent = await page.$eval(contentSelector, (root) => {
+    const img = root.querySelector("img");
+    if (!img) {
+      return "";
+    }
+    return img.getAttribute("src")?.trim() || img.getAttribute("data-src")?.trim() || img.getAttribute("data-lazy-src")?.trim() || "";
+  }).catch(() => "");
+  if (inContent) {
+    return absolutizeUrl(inContent, base);
+  }
+  const articleImg = await page.$$eval("article img", (imgs) => {
+    for (const img of imgs) {
+      const s = img.getAttribute("src")?.trim() || img.getAttribute("data-src")?.trim() || img.getAttribute("data-lazy-src")?.trim() || "";
+      if (s) {
+        return s;
+      }
+    }
+    return "";
+  }).catch(() => "");
+  if (articleImg) {
+    return absolutizeUrl(articleImg, base);
+  }
+  return "";
+}
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+async function getImageResolution(url) {
+  const response = await axios.get(url, {
+    responseType: "arraybuffer"
+  });
+  const buffer = Buffer.from(response.data);
+  return imageSize.imageSize(buffer);
+}
+const MIN_WIDTH = 266;
+const MIN_HEIGHT = 165;
+async function pickImageUrlWithMinSize(primary, fallback) {
+  const p = primary?.trim() ?? "";
+  const f = fallback?.trim() ?? "";
+  if (!p) {
+    return f;
+  }
+  try {
+    const dim = await getImageResolution(p);
+    const w = dim.width ?? 0;
+    const h = dim.height ?? 0;
+    if (w >= MIN_WIDTH && h >= MIN_HEIGHT) {
+      return p;
+    }
+  } catch {
+  }
+  return f || p;
+}
 class Parser {
   constructor(url, linkSelector, titleSelector, contentSelector, adjustUrl = false, urlSuffix = "") {
     this.url = url;
@@ -612,7 +836,8 @@ class Parser {
           (el) => el.getAttribute("href")
         );
         const img = await currentElement.$("img");
-        this.imageUrl = await img?.evaluate((el) => el.getAttribute("src"));
+        const rawSrc = await img?.evaluate((el) => el.getAttribute("src"));
+        this.imageUrl = rawSrc ? absolutizeUrl(rawSrc, page.url()) : null;
       }
     } catch (error) {
       console.error("Parser error", error);
@@ -639,7 +864,15 @@ class Parser {
         this.contentSelector,
         (el) => el.innerHTML.trim()
       );
-      return { content, imageUrl: this.imageUrl || "" };
+      const fromArticle = await extractImageUrlFromArticlePage(
+        page,
+        this.contentSelector
+      );
+      const imageUrl = await pickImageUrlWithMinSize(
+        fromArticle,
+        this.imageUrl ?? ""
+      );
+      return { content, imageUrl };
     } catch (error) {
       console.error("Parser parse() error", error);
       return { content: "", imageUrl: this.imageUrl || "" };
@@ -688,14 +921,24 @@ class Dota2RuParser {
         const titleIndex = news.indexOf(title);
         const currentElement = newsElements[titleIndex];
         const img = await currentElement.$(".index__news-img");
-        const imageUrl = await img?.evaluate((el) => el.getAttribute("src"));
+        const rawListing = await img?.evaluate((el) => el.getAttribute("src"));
+        const imageUrl = rawListing ? absolutizeUrl(rawListing, page.url()) : "";
         await currentElement.click();
         await page.waitForSelector("main.global-main.container.news-news");
+        const contentSelector = "section.global-main__wrap.news-news__main";
         const content = await page.$eval(
-          "section.global-main__wrap.news-news__main",
+          contentSelector,
           (el) => el.innerHTML.trim()
         );
-        return { content, imageUrl: imageUrl || "" };
+        const fromArticle = await extractImageUrlFromArticlePage(
+          page,
+          contentSelector
+        );
+        const picked = await pickImageUrlWithMinSize(
+          fromArticle,
+          imageUrl ?? ""
+        );
+        return { content, imageUrl: picked };
       }
     } catch (error) {
       console.error("Parser error", error);
@@ -706,6 +949,43 @@ class Dota2RuParser {
   }
 }
 const dota2RuParser = new Dota2RuParser();
+function pickSrcFromImgEl($img) {
+  const src = $img.attr("src")?.trim() || $img.attr("data-src")?.trim() || $img.attr("data-lazy-src")?.trim() || "";
+  return src;
+}
+function extractImageUrlFromArticleHtml(html, baseUrl) {
+  const $ = cheerio__namespace.load(html);
+  const og = $('meta[property="og:image"]').attr("content")?.trim() ?? "";
+  if (og) {
+    return absolutizeUrl(og, baseUrl);
+  }
+  const tw = $('meta[name="twitter:image"]').attr("content")?.trim() ?? "";
+  if (tw) {
+    return absolutizeUrl(tw, baseUrl);
+  }
+  for (const sel of [
+    "article img",
+    ".post-content img",
+    ".text-content img",
+    '[itemprop="articleBody"] img'
+  ]) {
+    const $img = $(sel).first();
+    if ($img.length) {
+      const s = pickSrcFromImgEl($img);
+      if (s && !s.startsWith("data:")) {
+        return absolutizeUrl(s, baseUrl);
+      }
+    }
+  }
+  const any = $("body img[src]").first();
+  if (any.length) {
+    const s = pickSrcFromImgEl(any);
+    if (s && !s.startsWith("data:")) {
+      return absolutizeUrl(s, baseUrl);
+    }
+  }
+  return "";
+}
 const TAG_URL = "https://hawk.live/ru/tags/dota-2-news";
 const http = axios.create({
   timeout: 45e3,
@@ -778,7 +1058,10 @@ const hawkLiveParser = {
       if (!content.trim()) {
         content = `<p>${chosen.title}</p>`;
       }
-      const imageUrl = chosen.image?.url ?? "";
+      const listingRaw = chosen.image?.url?.trim() ?? "";
+      const listingImage = listingRaw ? absolutizeUrl(listingRaw, TAG_URL) : "";
+      const fromArticle = extractImageUrlFromArticleHtml(postHtml, articleUrl);
+      const imageUrl = await pickImageUrlWithMinSize(fromArticle, listingImage);
       return { content, imageUrl };
     } catch (error) {
       console.error("Hawk Live parser error", error);
@@ -820,30 +1103,6 @@ const PostService = {
     return { title: "", text: "", imageUrl: "" };
   }
 };
-const MIN_SIDE = 1280;
-const MIN_BYTES_PER_PIXEL_LOSSY = 0.03;
-async function isImageGoodForFullBleed(buffer) {
-  let meta;
-  try {
-    meta = await sharp(buffer).metadata();
-  } catch {
-    return false;
-  }
-  const w = meta.width ?? 0;
-  const h = meta.height ?? 0;
-  if (w < MIN_SIDE || h < MIN_SIDE) {
-    return false;
-  }
-  const fmt = (meta.format ?? "").toLowerCase();
-  const lossy = fmt === "jpeg" || fmt === "jpg" || fmt === "webp" || fmt === "avif";
-  if (lossy) {
-    const bpp = buffer.length / (w * h);
-    if (bpp < MIN_BYTES_PER_PIXEL_LOSSY) {
-      return false;
-    }
-  }
-  return true;
-}
 const ADMIN_ID = env.TELEGRAM_ADMIN_ID;
 const CHANNEL_ID = env.TELEGRAM_CHANEL_ID;
 const generatePostJob = async (api, source) => {
@@ -860,6 +1119,13 @@ const generatePostJob = async (api, source) => {
       return;
     }
     const { title, text, imageUrl } = result;
+    if (!title?.trim() || !text?.trim() || !imageUrl?.trim()) {
+      await api.sendMessage(
+        ADMIN_ID,
+        "Не удалось получить материал для поста: источник не ответил вовремя, вернул пустую страницу или нет картинки. Посмотрите логи сервера (часто это таймаут или блокировка запросов к hawk.live)."
+      );
+      return;
+    }
     const previewImage = await urlToBuffer(imageUrl);
     const allowsBackgroundTemplate = await isImageGoodForFullBleed(previewImage);
     const draftId = crypto.randomUUID();
@@ -871,7 +1137,8 @@ const generatePostJob = async (api, source) => {
         keyboard.text("Отменить", "cancel");
       }
       const sent = await api.sendPhoto(ADMIN_ID, new grammy.InputFile(previewImage), {
-        caption: text,
+        caption: markdownToHtml(text),
+        parse_mode: "HTML",
         reply_markup: keyboard
       });
       SessionStore$1.set(CHANNEL_ID, {
@@ -887,9 +1154,10 @@ const generatePostJob = async (api, source) => {
       scheduleDraftAutoPublish(draftId, api);
     }
   } catch (error) {
+    console.error("generatePostJob:", sanitizeErrorForLogs(error));
     await api.sendMessage(
       ADMIN_ID,
-      `Произошла ошибка при генерации поста 😥 ${error}`
+      `Произошла ошибка при генерации поста 😥 ${errorMessageForUser(error)}`
     );
   }
 };
@@ -898,10 +1166,12 @@ const sourceEvent = async (ctx) => {
     const source = ctx.callbackQuery?.data?.replace("source:", "");
     await answerCallbackSafe(ctx);
     void generatePostJob(ctx.api, source).catch((err) => {
-      console.error("generatePostJob:", err);
+      console.error("generatePostJob:", sanitizeErrorForLogs(err));
     });
   } catch (error) {
-    await ctx.reply(`❌ Не удалось запустить генерацию. ${error}`);
+    await ctx.reply(
+      `❌ Не удалось запустить генерацию. ${errorMessageForUser(error)}`
+    );
   }
 };
 function getRandomEnumValue(enumObj) {
@@ -1060,7 +1330,7 @@ const isRender = process.env.RENDER === "true";
     registerGracefulShutdown(httpServer);
     console.log("✅ Бот успешно запущен!");
   } catch (err) {
-    console.error("❌ Ошибка запуска:", err);
+    console.error("❌ Ошибка запуска:\n" + sanitizeErrorForLogs(err));
     process.exit(1);
   }
 })();
