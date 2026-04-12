@@ -2,6 +2,9 @@ import axios from "axios";
 import * as cheerio from "cheerio";
 import { pickFirstNonDuplicateTitle } from "services/semantic-news.service";
 import { NewsStore } from "db/news";
+import { absolutizeUrl } from "utils/absolutizeUrl";
+import { extractImageUrlFromArticleHtml } from "utils/articleImageFromHtml";
+import { pickImageUrlWithMinSize } from "utils/pickImageUrlWithMinSize";
 
 const TAG_URL = "https://hawk.live/ru/tags/dota-2-news";
 
@@ -102,7 +105,12 @@ export const hawkLiveParser = {
         content = `<p>${chosen.title}</p>`;
       }
 
-      const imageUrl = chosen.image?.url ?? "";
+      const listingRaw = chosen.image?.url?.trim() ?? "";
+      const listingImage = listingRaw
+        ? absolutizeUrl(listingRaw, TAG_URL)
+        : "";
+      const fromArticle = extractImageUrlFromArticleHtml(postHtml, articleUrl);
+      const imageUrl = await pickImageUrlWithMinSize(fromArticle, listingImage);
       return { content, imageUrl };
     } catch (error) {
       console.error("Hawk Live parser error", error);

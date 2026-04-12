@@ -10,6 +10,7 @@ import { MAX_NEWS_PICK_ATTEMPTS } from "services/semantic-news.service";
 import { PostService } from "services/post.service";
 import SessionStore from "store/session/session.store";
 import { isImageGoodForFullBleed } from "utils/isImageGoodForFullBleed";
+import { markdownToHtml } from "utils/markdownToHtml";
 import { errorMessageForUser, sanitizeErrorForLogs } from "utils/redactSecrets";
 import { urlToBuffer } from "utils/urlToBuffer";
 
@@ -57,7 +58,8 @@ export const generatePostJob = async (api: Api<RawApi>, source: Source) => {
       }
 
       const sent = await api.sendPhoto(ADMIN_ID, new InputFile(previewImage), {
-        caption: text,
+        caption: markdownToHtml(text),
+        parse_mode: "HTML",
         reply_markup: keyboard,
       });
 

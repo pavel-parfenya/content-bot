@@ -1,6 +1,9 @@
 import puppeteer from "puppeteer";
 import { pickFirstNonDuplicateTitle } from "services/semantic-news.service";
 import { NewsStore } from "db/news";
+import { absolutizeUrl } from "utils/absolutizeUrl";
+import { extractImageUrlFromArticlePage } from "utils/articleImageFromPage";
+import { pickImageUrlWithMinSize } from "utils/pickImageUrlWithMinSize";
 import { puppeteerLaunchOptions } from "utils/puppeteerLaunch";
 
 export class Dota2RuParser {
@@ -33,15 +36,25 @@ export class Dota2RuParser {
         const titleIndex = news.indexOf(title);
         const currentElement = newsElements[titleIndex];
         const img = await currentElement.$(".index__news-img");
-        const imageUrl = await img?.evaluate((el) => el.getAttribute("src"));
+        const rawListing = await img?.evaluate((el) => el.getAttribute("src"));
+        const imageUrl = rawListing
+          ? absolutizeUrl(rawListing, page.url())
+          : "";
         await currentElement.click();
         await page.waitForSelector("main.global-main.container.news-news");
-        const content = await page.$eval(
-          "section.global-main__wrap.news-news__main",
-          (el) => el.innerHTML.trim(),
+        const contentSelector = "section.global-main__wrap.news-news__main";
+        const content = await page.$eval(contentSelector, (el) =>
+          el.innerHTML.trim(),
         );
-
-        return { content, imageUrl: imageUrl || "" };
+        const fromArticle = await extractImageUrlFromArticlePage(
+          page,
+          contentSelector,
+        );
+        const picked = await pickImageUrlWithMinSize(
+          fromArticle,
+          imageUrl ?? "",
+        );
+        return { content, imageUrl: picked };
       }
     } catch (error) {
       console.error("Parser error", error);

@@ -1,7 +1,10 @@
 import puppeteer from "puppeteer";
 import { pickFirstNonDuplicateTitle } from "services/semantic-news.service";
 import { NewsStore } from "db/news";
+import { absolutizeUrl } from "utils/absolutizeUrl";
+import { extractImageUrlFromArticlePage } from "utils/articleImageFromPage";
 import { delay } from "utils/delay";
+import { pickImageUrlWithMinSize } from "utils/pickImageUrlWithMinSize";
 import { puppeteerLaunchOptions } from "utils/puppeteerLaunch";
 
 export class Parser {
@@ -52,7 +55,10 @@ export class Parser {
         );
 
         const img = await currentElement.$("img");
-        this.imageUrl = await img?.evaluate((el) => el.getAttribute("src"));
+        const rawSrc = await img?.evaluate((el) => el.getAttribute("src"));
+        this.imageUrl = rawSrc
+          ? absolutizeUrl(rawSrc, page.url())
+          : null;
       }
     } catch (error) {
       console.error("Parser error", error);
@@ -85,7 +91,15 @@ export class Parser {
       const content = await page.$eval(this.contentSelector, (el) =>
         el.innerHTML.trim(),
       );
-      return { content, imageUrl: this.imageUrl || "" };
+      const fromArticle = await extractImageUrlFromArticlePage(
+        page,
+        this.contentSelector,
+      );
+      const imageUrl = await pickImageUrlWithMinSize(
+        fromArticle,
+        this.imageUrl ?? "",
+      );
+      return { content, imageUrl };
     } catch (error) {
       console.error("Parser parse() error", error);
       return { content: "", imageUrl: this.imageUrl || "" };
